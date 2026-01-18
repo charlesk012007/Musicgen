@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OmniSonos AI - 6 Octave Music Gen</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        :root { --neon: #00f2fe; --dark: #0d0d11; --card: #1a1a20; }
+        body { background: var(--dark); color: white; font-family: 'Inter', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .ui-panel { background: var(--card); padding: 30px; border-radius: 24px; border: 1px solid #333; width: 420px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
+        h1 { margin: 0 0 5px; font-weight: 800; background: linear-gradient(to right, #4facfe, #00f2fe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .desc { color: #888; font-size: 0.9rem; margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #444; background: #2a2a32; color: white; box-sizing: border-box; }
+        button#genBtn { background: var(--neon); color: black; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        button#copyBtn { background: transparent; border: 1px dashed #555; color: #aaa; font-size: 0.8rem; margin-top: 10px; cursor: pointer; }
+        button#copyBtn:hover { border-color: var(--neon); color: white; }
+        .viz-container { display: flex; gap: 4px; margin-top: 20px; height: 40px; align-items: flex-end; justify-content: center; }
+        .bar { width: 15px; background: #333; transition: height 0.1s ease; border-radius: 2px; height: 5px; }
+        .status { font-size: 0.8rem; color: var(--neon); margin-top: 10px; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+
+<div class="ui-panel">
+    <h1>OmniSonos AI</h1>
+    <div class="desc">6-Octave High Fidelity Engine</div>
+    
+    <input type="text" id="prompt" placeholder="Describe vibe (e.g. 'Dark Ambient' or 'Fast Pop')">
+    
+    <select id="inst">
+        <option value="piano">Concert Grand Piano</option>
+        <option value="eguitar">Electric Guitar (Distorted)</option>
+        <option value="sax">Saxophone (Breath Synth)</option>
+    </select>
+
+    <select id="range">
+        <option value="1">Sub Bass (Oct 1-2)</option>
+        <option value="3" selected>Mid Range (Oct 3-4)</option>
+        <option value="5">High Frequency (Oct 5-6)</option>
+    </select>
+
+    <button id="genBtn">GENERATE & PLAY</button>
+    <button id="copyBtn" onclick="copySourceCode()">COPY SOURCE CODE TO CLIPBOARD</button>
+    
+    <div id="stat" class="status">System Ready</div>
+    <div class="viz-container" id="viz"></div>
+</div>
+
+<script>
+    // Visualizer Setup
+    const viz = document.getElementById('viz');
+    for(let i=0; i<15; i++) {
+        let bar = document.createElement('div');
+        bar.className = 'bar';
+        viz.appendChild(bar);
+    }
+    const bars = document.querySelectorAll('.bar');
+
+    // Instrument Engine
+    const piano = new Tone.Sampler({
+        urls: { C4: "https://tonejs.github.io/audio/salamander/C4.mp3" }
+    }).toDestination();
+    
+    const eguitar = new Tone.Distortion(0.6).toDestination().connect(new Tone.PolySynth(Tone.Synth).toDestination());
+    
+    const sax = new Tone.FMSynth({
+        harmonicity: 0.5, modulationIndex: 8,
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.2, release: 0.4 }
+    }).toDestination();
+
+    document.getElementById('genBtn').addEventListener('click', async () => {
+        await Tone.start();
+        const stat = document.getElementById('stat');
+        const prompt = document.getElementById('prompt').value.toLowerCase();
+        const startOct = parseInt(document.getElementById('range').value);
+        
+        stat.innerText = "AI Analyzing Frequency Mapping...";
+        
+        // Dynamic Logic based on prompt
+        let speed = prompt.includes('fast') ? 0.2 : 0.5;
+        let scale = prompt.includes('dark') ? ["C", "Eb", "F", "Ab", "Bb"] : ["C", "D", "E", "G", "A"];
+        
+        const now = Tone.now();
+        for (let i = 0; i < 16; i++) {
+            let note = scale[Math.floor(Math.random() * scale.length)] + (startOct + Math.floor(Math.random() * 2));
+            let time = now + (i * speed);
+            
+            let inst = document.getElementById('inst').value;
+            if (inst === 'piano') piano.triggerAttackRelease(note, "4n", time);
+            else if (inst === 'sax') sax.triggerAttackRelease(note, "4n", time);
+            else eguitar.triggerAttackRelease(note, "8n", time);
+
+            Tone.Draw.schedule(() => {
+                const b = bars[i % 15];
+                b.style.height = "100%";
+                b.style.background = "#00f2fe";
+                setTimeout(() => { b.style.height = "5px"; b.style.background = "#333"; }, 200);
+            }, time);
+        }
+        setTimeout(() => { stat.innerText = "Generation Complete."; }, 16 * speed * 1000);
+    });
+
+    function copySourceCode() {
+        const source = document.documentElement.outerHTML;
+        navigator.clipboard.writeText(source).then(() => {
+            const btn = document.getElementById('copyBtn');
+            btn.innerText = "✓ COPIED!";
+            setTimeout(() => { btn.innerText = "COPY SOURCE CODE TO CLIPBOARD"; }, 2000);
+        });
+    }
+</script>
+
+</body>
+</html>
