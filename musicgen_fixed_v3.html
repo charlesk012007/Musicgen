@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Musicgen (animated + instruments)</title>
+  <style>
+    :root { --pad: 14px; --radius: 14px; }
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; background: #0b0c10; color: #e8e8ea; }
+    header { padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) var(--pad);
+             border-bottom: 1px solid rgba(255,255,255,.08);
+             position: sticky; top: 0; background: rgba(11,12,16,.92); backdrop-filter: blur(10px); }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+    header p { margin: 6px 0 0; font-size: 13px; opacity: .8; line-height: 1.35; }
+    main { padding: var(--pad); padding-bottom: calc(var(--pad) + env(safe-area-inset-bottom)); max-width: 980px; margin: 0 auto; }
+    .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+            border-radius: var(--radius); padding: var(--pad); box-shadow: 0 6px 30px rgba(0,0,0,.25); }
+    .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 820px) { .row { grid-template-columns: 1.1fr .9fr; } }
+    button { appearance: none; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08);
+             color: #fff; padding: 12px 14px; border-radius: 12px; font-size: 15px; font-weight: 600; }
+    button:active { transform: translateY(1px); }
+    button.primary { background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.35); }
+    button.warn { background: rgba(245,158,11,.16); border-color: rgba(245,158,11,.35); }
+    button.danger { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.35); }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btns .spacer { flex: 1; min-width: 10px; }
+    .kv { display:flex; align-items:center; justify-content: space-between; gap: 10px; font-size: 13px; opacity: .92; }
+    .kv b { font-weight: 700; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .control { padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.18); }
+    .control label { display:flex; align-items:center; justify-content: space-between; font-size: 13px; opacity: .95; }
+    .control label span { opacity: .8; }
+    input[type="range"]{ width:100%; margin-top: 8px; }
+    input[type="range"]{ -webkit-appearance: none; appearance: none; height: 26px; background: transparent; }
+    input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: rgba(255,255,255,.18); }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width: 22px; height: 22px; border-radius: 50%;
+      margin-top: -8px; background: rgba(255,255,255,.92); border: 2px solid rgba(0,0,0,.35); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 12px; white-space: pre-wrap; opacity: .9; }
+    .small { font-size: 12px; opacity: .78; line-height: 1.35; }
+    .pill { display:inline-block; padding: 6px 10px; border-radius: 999px; border:1px solid rgba(255,255,255,.12);
+            background: rgba(255,255,255,.06); font-size: 12px; opacity: .9; }
+    .pill.ok { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.12); }
+    .pill.bad { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.12); }
+    .divider { height: 1px; background: rgba(255,255,255,.08); margin: 12px 0; }
+    #gate {
+      position: fixed; inset: 0; z-index: 9999;
+      display:flex; align-items:center; justify-content:center;
+      background: rgba(0,0,0,.70); backdrop-filter: blur(10px);
+      padding: 22px;
+    }
+    #gate .panel {
+      max-width: 560px; width: 100%;
+      border-radius: 18px; padding: 16px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(15,16,20,.92);
+      box-shadow: 0 12px 60px rgba(0,0,0,.55);
+    }
+    #gate h2 { margin: 0 0 8px; font-size: 18px; }
+    #gate p { margin: 0 0 12px; font-size: 13px; opacity: .85; line-height: 1.35; }
+    #gate .hint { margin-top: 10px; font-size: 12px; opacity: .75; }
+    #gate.hidden { display: none; }
+    canvas { width: 100%; height: 120px; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); }
+  </style>
+</head>
+<body>
+  <div id="gate">
+    <div class="panel">
+      <h2>Tap to start audio</h2>
+      <p>Animated generator: 8‑bar A/B form, evolving motifs, humanized timing/velocity, octave range up to 6, and selectable lead instruments.</p>
+      <div class="btns">
+        <button id="unlockBtn" class="primary">Start</button>
+        <span id="gateStatus" class="pill bad">Locked</span>
+      </div>
+      <div class="hint">If you hear nothing: turn off Silent Mode, raise volume, and keep the phone off mute.</div>
+    </div>
+  </div>
+
+  <header>
+    <h1>Musicgen</h1>
+    <p>Lead instruments: piano, classic guitar, electric guitar, sax, keyboard. Tip: Variation 0.8–0.95, Humanize 0.5–0.8, Octave 4–6.</p>
+  </header>
+
+  <main>
+    <div class="row">
+      <section class="card">
+        <div class="btns">
+          <button id="playBtn" class="primary" disabled>Play</button>
+          <button id="stopBtn" class="danger" disabled>Stop</button>
+          <button id="regenBtn" class="warn" disabled>Regenerate</button>
+          <div class="spacer"></div>
+          <span id="statusPill" class="pill bad">Engine: off</span>
+        </div>
+        <div class="divider"></div>
+
+        <div class="grid">
+          <div class="control">
+            <label><b>Tempo</b> <span><span id="tempoVal">122</span> BPM</span></label>
+            <input id="tempo" type="range" min="70" max="170" value="122" step="1">
+          </div>
+          <div class="control">
+            <label><b>Key</b> <span id="keyVal">C</span></label>
+            <input id="key" type="range" min="0" max="11" value="0" step="1">
+          </div>
+
+          <div class="control">
+            <label><b>Progression</b> <span id="progVal">vi–IV–I–V</span></label>
+            <input id="prog" type="range" min="0" max="3" value="0" step="1">
+          </div>
+          <div class="control">
+            <label><b>Energy</b> <span id="energyVal">0.75</span></label>
+            <input id="energy" type="range" min="0" max="1" value="0.75" step="0.01">
+          </div>
+
+          <div class="control">
+            <label><b>Variation</b> <span id="varVal">0.75</span></label>
+            <input id="variation" type="range" min="0" max="1" value="0.75" step="0.01">
+          </div>
+          <div class="control">
+            <label><b>Octave range</b> <span id="octVal">4.0</span></label>
+            <input id="octave" type="range" min="1" max="6" value="4.0" step="0.1">
+          </div>
+
+          <div class="control">
+            <label><b>Instrument</b> <span id="instVal">Piano</span></label>
+            <input id="instrument" type="range" min="0" max="4" value="0" step="1">
+          </div>
+          <div class="control">
+            <label><b>Humanize</b> <span id="humVal">0.55</span></label>
+            <input id="humanize" type="range" min="0" max="1" value="0.55" step="0.01">
+          </div>
+
+          <div class="control">
+            <label><b>Drums</b> <span id="drumsVal">0.75</span></label>
+            <input id="drums" type="range" min="0" max="1" value="0.75" step="0.01">
+          </div>
+          <div class="control">
+            <label><b>Bass</b> <span id="bassVal">0.80</span></label>
+            <input id="bass" type="range" min="0" max="1" value="0.80" step="0.01">
+          </div>
+
+          <div class="control">
+            <label><b>Lead</b> <span id="leadVal">0.70</span></label>
+            <input id="lead" type="range" min="0" max="1" value="0.70" step="0.01">
+          </div>
+          <div class="control">
+            <label><b>Reverb</b> <span id="revVal">0.35</span></label>
+            <input id="reverb" type="range" min="0" max="1" value="0.35" step="0.01">
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="kv"><span>Now playing</span> <b id="nowPlaying">—</b></div>
+        <div class="small">Damaged “robot feel” usually comes from fixed timing + fixed velocities. This build jitters timing, varies accents, adds grace notes, and evolves the loop.</div>
+      </section>
+
+      <aside class="card">
+        <div class="kv"><span>Diagnostics</span> <span id="diag" class="pill bad">Not started</span></div>
+        <div class="divider"></div>
+        <canvas id="scope" width="600" height="180"></canvas>
+        <div class="divider"></div>
+        <div class="mono" id="log"></div>
+      </aside>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log");
+  const pill = $("statusPill");
+  const diag = $("diag");
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+  }
+  window.addEventListener("error", (e) => log(`ERROR: ${e.message}`));
+  window.addEventListener("unhandledrejection", (e) => log(`PROMISE REJECTED: ${e.reason?.message || e.reason}`));
+
+  const keyNames = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const progNames = ["vi–IV–I–V", "I–V–vi–IV", "ii–V–I–I", "i–bVII–bVI–V (minor-ish)"];
+  const instNames = ["Piano","Classic guitar","Electric guitar","Sax","Keyboard"];
+  function bindRange(id, labelId, fmt=(v)=>v) {
+    const el = $(id), out = $(labelId);
+    const update = () => { out.textContent = fmt(el.value); };
+    el.addEventListener("input", update, { passive: true });
+    update();
+    return el;
+  }
+  const tempoEl  = bindRange("tempo","tempoVal",(v)=>String(v));
+  const keyEl    = bindRange("key","keyVal",(v)=>keyNames[Number(v)]);
+  const progEl   = bindRange("prog","progVal",(v)=>progNames[Number(v)]);
+  const energyEl = bindRange("energy","energyVal",(v)=>Number(v).toFixed(2));
+  const varEl    = bindRange("variation","varVal",(v)=>Number(v).toFixed(2));
+  const octEl    = bindRange("octave","octVal",(v)=>Number(v).toFixed(1));
+  const instEl   = bindRange("instrument","instVal",(v)=>instNames[Number(v)]);
+  const humEl    = bindRange("humanize","humVal",(v)=>Number(v).toFixed(2));
+  const drumsEl  = bindRange("drums","drumsVal",(v)=>Number(v).toFixed(2));
+  const bassEl   = bindRange("bass","bassVal",(v)=>Number(v).toFixed(2));
+  const leadEl   = bindRange("lead","leadVal",(v)=>Number(v).toFixed(2));
+  const revEl    = bindRange("reverb","revVal",(v)=>Number(v).toFixed(2));
+
+  const playBtn = $("playBtn");
+  const stopBtn = $("stopBtn");
+  const regenBtn = $("regenBtn");
+  const nowPlaying = $("nowPlaying");
+
+  // ---------- Audio Engine ----------
+  let ctx = null;
+  let master = null, limiter = null, analyser = null;
+  let revSend = null, revReturn = null;
+  let drumBus = null, bassBus = null, leadBus = null, chordBus = null;
+  let playing = false;
+  let stepTimer = null;
+  let currentStep = 0;
+  let pattern = null;
+  let loopCount = 0;
+
+  const scope = $("scope");
+  const sctx = scope.getContext("2d");
+
+  function setEngineOn(on) {
+    pill.textContent = on ? "Engine: on" : "Engine: off";
+    pill.classList.toggle("ok", on);
+    pill.classList.toggle("bad", !on);
+    diag.textContent = on ? "Audio ready" : "Not started";
+    diag.classList.toggle("ok", on);
+    diag.classList.toggle("bad", !on);
+    playBtn.disabled = !on;
+    regenBtn.disabled = !on;
+  }
+
+  function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
+  function midiToHz(m){ return 440 * Math.pow(2, (m - 69)/12); }
+  function randf(a,b){ return a + Math.random()*(b-a); }
+  function randi(a,b){ return Math.floor(randf(a,b+1)); }
+  function choice(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function makeConvolverReverb(context) {
+    const rate = context.sampleRate;
+    const seconds = 1.7;
+    const len = Math.floor(rate * seconds);
+    const buf = context.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) {
+      const data = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        const decay = Math.pow(1 - t, 3.0);
+        data[i] = (Math.random()*2 - 1) * decay;
+      }
+    }
+    const con = context.createConvolver();
+    con.buffer = buf;
+    return con;
+  }
+
+  function makeLimiter(context) {
+    const comp = context.createDynamicsCompressor();
+    comp.threshold.value = -10;
+    comp.knee.value = 18;
+    comp.ratio.value = 8;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.120;
+    return comp;
+  }
+
+  function ensureContext() {
+    if (ctx) return ctx;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    ctx = new AudioContext({ latencyHint: "interactive" });
+
+    master = ctx.createGain();
+    master.gain.value = 0.85;
+
+    limiter = makeLimiter(ctx);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+
+    drumBus = ctx.createGain();
+    bassBus = ctx.createGain();
+    leadBus = ctx.createGain();
+    chordBus = ctx.createGain();
+
+    revSend = ctx.createGain();
+    revReturn = ctx.createGain();
+    revReturn.gain.value = 0.30;
+
+    const convolver = makeConvolverReverb(ctx);
+    revSend.connect(convolver);
+    convolver.connect(revReturn);
+
+    drumBus.connect(master);
+    bassBus.connect(master);
+    leadBus.connect(master);
+    chordBus.connect(master);
+    revReturn.connect(master);
+
+    master.connect(limiter);
+    limiter.connect(analyser);
+    analyser.connect(ctx.destination);
+
+    log(`AudioContext created @ ${ctx.sampleRate} Hz`);
+    return ctx;
+  }
+
+  async function unlockAudio() {
+    ensureContext();
+    if (ctx.state !== "running") await ctx.resume();
+
+    // tiny click to satisfy iOS gesture requirement
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.02, t + 0.005);
+    g.gain.linearRampToValueAtTime(0.0001, t + 0.015);
+    o.start(t); o.stop(t + 0.02);
+
+    setEngineOn(true);
+    $("gateStatus").textContent = "Unlocked";
+    $("gateStatus").classList.remove("bad");
+    $("gateStatus").classList.add("ok");
+    $("gate").classList.add("hidden");
+
+    stopBtn.disabled = false;
+    generatePattern(true);
+    updateMix();
+    log("Unlocked + pattern generated.");
+  }
+
+  // ---------- Harmony ----------
+  function getProgression() {
+    const mode = Number(progEl.value);
+    if (mode === 0) return { name: "vi–IV–I–V",  roots: [9, 5, 0, 7], quality: ["min","maj","maj","maj"] };
+    if (mode === 1) return { name: "I–V–vi–IV",  roots: [0, 7, 9, 5], quality: ["maj","maj","min","maj"] };
+    if (mode === 2) return { name: "ii–V–I–I",   roots: [2, 7, 0, 0], quality: ["min","maj","maj","maj"] };
+    return              { name: "i–bVII–bVI–V", roots: [0, 10, 8, 7], quality: ["min","maj","maj","maj"] };
+  }
+
+  function chordTones(rootSemi, quality) {
+    const third = (quality === "min") ? 3 : 4;
+    return [0, third, 7, (quality === "maj" ? 11 : 10)];
+  }
+
+  function scaleDegreesFor(name) {
+    if (name.includes("minor")) return [0,2,3,5,7,8,10];
+    return [0,2,4,5,7,9,11];
+  }
+
+  // ---------- Pattern generation ----------
+  function generatePattern(resetLoop=false) {
+    if (resetLoop) loopCount = 0;
+
+    const tempo = Number(tempoEl.value);
+    const energy = Number(energyEl.value);
+    const variation = Number(varEl.value);
+    const octaveRange = Number(octEl.value);
+    const prog = getProgression();
+    const key = Number(keyEl.value);
+
+    const stepsPerBar = 16;
+    const totalBars = 8;
+    const totalSteps = stepsPerBar * totalBars;
+
+    const hatBase = clamp(0.34 + 0.58*energy, 0.25, 0.98);
+    const ghostBase = clamp(0.06 + 0.32*energy, 0.06, 0.55);
+
+    const scale = scaleDegreesFor(prog.name);
+
+    // Wider register: up to 6 octaves (72 semis)
+    const baseMidi = 60;
+    const spreadSemis = Math.round(octaveRange * 12);
+    const leadMin = baseMidi - Math.floor(spreadSemis*0.55);
+    const leadMax = baseMidi + Math.floor(spreadSemis*0.70);
+
+    const bassOct = 34;
+
+    const motifA = choice([ [0,2,4,2], [0,4,5,4], [0,2,7,5], [0,5,4,2], [0,2,0,7] ]);
+    const motifB = choice([ [0,7,5,4], [0,5,7,9], [0,4,2,0], [0,2,5,7], [0,9,7,5] ]);
+
+    function pickLeadPc(chordRoot, quality, bar, stepInBar) {
+      const tones = chordTones(chordRoot, quality);
+      const isA = bar < 4;
+      const motif = isA ? motifA : motifB;
+
+      const phraseSlots = [0,4,8,12];
+      const slotIdx = phraseSlots.indexOf(stepInBar);
+      const useMotif = slotIdx !== -1 && Math.random() < (0.80 - 0.35*variation);
+
+      if (useMotif) {
+        if (Math.random() < 0.70) return (chordRoot + choice(tones)) % 12;
+        return (chordRoot + motif[slotIdx]) % 12;
+      }
+
+      const chordBias = 0.60 - 0.25*variation;
+      if (Math.random() < chordBias) return (chordRoot + choice(tones)) % 12;
+
+      if (Math.random() < 0.14 + 0.24*variation) {
+        const target = (chordRoot + choice(tones)) % 12;
+        return (target + choice([-1,1]) + 12) % 12;
+      }
+      return (chordRoot + choice(scale)) % 12;
+    }
+
+    let leadCenter = randi(leadMin + 6, leadMax - 6);
+    const seq = [];
+
+    for (let s = 0; s < totalSteps; s++) {
+      const bar = Math.floor(s / stepsPerBar);
+      const stepInBar = s % stepsPerBar;
+      const section = (bar < 4) ? "A" : "B";
+      const isFillBar = (bar === 3 || bar === 7);
+
+      const chordIndex = bar % 4;
+      const chordRoot = (key + prog.roots[chordIndex]) % 12;
+      const quality = prog.quality[chordIndex];
+
+      const hatProb = clamp(hatBase + (section==="B" ? 0.10 : -0.06) + (isFillBar ? 0.08 : 0), 0.08, 0.99);
+      const ghostProb = clamp(ghostBase + (section==="B" ? 0.08 : 0) + (isFillBar ? 0.12 : 0), 0.04, 0.75);
+
+      let kick = 0;
+      if (section === "A") {
+        if (stepInBar === 0 || stepInBar === 8) kick = 1;
+        else if (Math.random() < ghostProb*0.55) kick = 1;
+      } else {
+        if (stepInBar === 0 || stepInBar === 4 || stepInBar === 8 || stepInBar === 12) kick = (energy > 0.68) ? 1 : (Math.random() < 0.65 ? 1 : 0);
+        else if (Math.random() < ghostProb*0.75) kick = 1;
+      }
+
+      let snare = (stepInBar === 4 || stepInBar === 12) ? 1 : 0;
+      if (isFillBar && (stepInBar === 14 || stepInBar === 15) && Math.random() < (0.35 + 0.45*variation)) snare = 1;
+
+      const hat = (Math.random() < hatProb) ? 1 : 0;
+
+      let bass = null;
+      const bassSlots = (section === "A") ? [0,8] : [0,6,8,12];
+      if (bassSlots.includes(stepInBar) || (isFillBar && (stepInBar === 10 || stepInBar === 14))) {
+        const pick = Math.random();
+        let bassPc = chordRoot;
+        if (pick < (0.20 + 0.32*variation)) bassPc = (chordRoot + 7) % 12;
+        else if (pick < (0.28 + 0.62*variation)) bassPc = (chordRoot + choice([2,5,9])) % 12;
+        const oct = (Math.random() < (0.10 + 0.20*variation)) ? 12 : 0;
+        bass = bassOct + bassPc + oct;
+      }
+
+      let lead = null;
+      const baseLeadProb = clamp(0.16 + 0.34*energy, 0.14, 0.62);
+      const sectionBoost = (section === "B") ? 0.10 : 0.0;
+      const fillBoost = isFillBar ? 0.10 : 0;
+      const varBoost = 0.18*variation;
+      const leadProb = clamp(baseLeadProb + sectionBoost + fillBoost + varBoost, 0.12, 0.88);
+
+      const rhythmicMask = (section === "A")
+        ? [0,2,4,7,8,10,12,14]
+        : [0,1,3,4,6,7,8,10,11,12,14,15];
+
+      if (rhythmicMask.includes(stepInBar) && Math.random() < leadProb) {
+        const targetPc = pickLeadPc(chordRoot, quality, bar, stepInBar);
+        if (stepInBar === 0) leadCenter += randi(-5, 5);
+        if (isFillBar && stepInBar >= 12 && Math.random() < (0.25 + 0.55*variation)) leadCenter += choice([-12, 12, 24, -24]);
+        leadCenter = clamp(leadCenter, leadMin, leadMax);
+
+        let best = leadCenter, bestDist = 999;
+        for (let m = leadCenter - 48; m <= leadCenter + 48; m++) {
+          const pc = ((m % 12) + 12) % 12;
+          if (pc === targetPc) {
+            const d = Math.abs(m - leadCenter);
+            if (d < bestDist) { bestDist = d; best = m; }
+          }
+        }
+        if (Math.random() < (0.18 + 0.45*variation)) best += choice([-12, 12, 24, -24]);
+        lead = clamp(best, leadMin, leadMax);
+      }
+
+      const velBase = clamp(0.72 + 0.20*energy, 0.55, 0.98);
+      const velLead = clamp(velBase + randf(-0.18, 0.18)*(0.30 + 0.90*variation), 0.25, 1.0);
+      const velBass = clamp(velBase + randf(-0.14, 0.14)*(0.20 + 0.70*variation), 0.25, 1.0);
+      const velHat  = clamp(0.55 + randf(-0.20, 0.20)*(0.35 + 0.55*variation), 0.12, 1.0);
+
+      const dropout = (Math.random() < (0.01 + 0.06*variation)) && (stepInBar === 0) && (bar !== 0);
+
+      seq.push({ kick: dropout ? 0 : kick, snare: dropout ? 0 : snare, hat: dropout ? 0 : hat,
+                 bass: dropout ? null : bass, lead: dropout ? null : lead,
+                 chordRoot, quality, bar, stepInBar, section, isFillBar,
+                 velLead, velBass, velHat });
+    }
+
+    pattern = { tempo, energy, variation, octaveRange, keyName: keyNames[key], progName: prog.name,
+                seq, stepsPerBar, totalSteps, swing: clamp(0.02 + 0.18*energy, 0, 0.22) };
+
+    nowPlaying.textContent = `${pattern.keyName} · ${pattern.progName} · ${pattern.tempo} BPM · Var ${pattern.variation.toFixed(2)} · Oct ${pattern.octaveRange.toFixed(1)} · ${instNames[Number(instEl.value)]}`;
+    log(`Pattern generated: 8 bars A/B, oct=${pattern.octaveRange.toFixed(1)}, var=${pattern.variation.toFixed(2)}.`);
+  }
+
+  function evolvePattern() {
+    if (!pattern) return;
+    const v = Number(varEl.value);
+    loopCount += 1;
+    const drift = (Math.sin(loopCount * 0.7) * 0.08) + (Math.random()*0.07 - 0.035);
+
+    for (let i = 0; i < pattern.seq.length; i++) {
+      const st = pattern.seq[i];
+      if (st.lead != null && Math.random() < (0.06 + 0.28*v)) st.lead = clamp(st.lead + choice([-2,-1,1,2,12,-12,24,-24]), 36, 96);
+      if (st.lead == null && st.section === "B" && Math.random() < (0.015 + 0.08*v)) {
+        st.lead = clamp(64 + randi(-30, 30), 36, 96);
+        st.velLead = clamp(0.55 + Math.random()*0.45, 0.25, 1);
+      }
+      if (Math.random() < (0.02 + 0.08*v)) st.hat = (Math.random() < clamp(0.58 + drift, 0.08, 0.98)) ? 1 : 0;
+      if (st.isFillBar && st.stepInBar >= 14 && Math.random() < (0.12 + 0.34*v)) { st.snare = 1; st.hat = 1; }
+    }
+    log(`Evolved loop #${loopCount}.`);
+  }
+
+  // ---------- Synthesis helpers ----------
+  function adsr(g, t, a, d, s, r, peak) {
+    const gg = g.gain;
+    gg.cancelScheduledValues(t);
+    gg.setValueAtTime(0.0001, t);
+    gg.linearRampToValueAtTime(peak, t + a);
+    gg.linearRampToValueAtTime(peak*s, t + a + d);
+    gg.linearRampToValueAtTime(0.0001, t + a + d + r);
+  }
+
+  function makeWaveshaper(amount=1.8) {
+    const sh = ctx.createWaveShaper();
+    const n = 2048;
+    const curve = new Float32Array(n);
+    for (let i=0;i<n;i++) {
+      const x = (i/(n-1))*2 - 1;
+      curve[i] = Math.tanh(amount * x);
+    }
+    sh.curve = curve;
+    return sh;
+  }
+
+  // ---------- Drums ----------
+  function playKick(t, vel=1) {
+    const amount = Number(drumsEl.value);
+    if (amount <= 0.001) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.95 * vel * amount, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+    const sh = makeWaveshaper(2.2);
+    o.connect(g); g.connect(sh); sh.connect(drumBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.06 * amount;
+    sh.connect(send); send.connect(revSend);
+    o.start(t); o.stop(t + 0.18);
+  }
+
+  function playSnare(t, vel=1) {
+    const amount = Number(drumsEl.value);
+    if (amount <= 0.001) return;
+    const n = ctx.createBufferSource();
+    const len = Math.floor(ctx.sampleRate * 0.16);
+    const b = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = b.getChannelData(0);
+    for (let i=0;i<len;i++) data[i] = (Math.random()*2 - 1);
+    n.buffer = b;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2000;
+    bp.Q.value = 0.85;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.60 * vel * amount, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    n.connect(bp); bp.connect(g); g.connect(drumBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.24 * amount;
+    g.connect(send); send.connect(revSend);
+    n.start(t); n.stop(t + 0.18);
+  }
+
+  function playHat(t, vel=1) {
+    const amount = Number(drumsEl.value);
+    if (amount <= 0.001) return;
+    const src = ctx.createBufferSource();
+    const len = Math.floor(ctx.sampleRate * 0.04);
+    const b = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = b.getChannelData(0);
+    for (let i=0;i<len;i++) data[i] = (Math.random()*2 - 1);
+    src.buffer = b;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.14 * vel * amount, t + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
+    src.connect(hp); hp.connect(g); g.connect(drumBus);
+    src.start(t); src.stop(t + 0.055);
+  }
+
+  // ---------- Bass ----------
+  function playBass(t, midi, dur, vel=1) {
+    const amount = Number(bassEl.value);
+    if (amount <= 0.001 || midi == null) return;
+    const freq = midiToHz(midi);
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "square";
+    o2.detune.value = -9;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 200 + 420*Number(energyEl.value);
+    lp.Q.value = 0.8;
+    const g = ctx.createGain();
+    const peak = 0.55 * amount * vel;
+    adsr(g, t, 0.012, 0.07, 0.42, Math.min(0.20, dur*0.6), peak);
+    o1.frequency.setValueAtTime(freq, t);
+    o2.frequency.setValueAtTime(freq*0.5, t);
+    o1.connect(lp); o2.connect(lp);
+    lp.connect(g); g.connect(bassBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.04 * amount;
+    g.connect(send); send.connect(revSend);
+    o1.start(t); o2.start(t);
+    o1.stop(t + dur); o2.stop(t + dur);
+  }
+
+  // ---------- Chords ----------
+  function playChordPad(t, chordRoot, quality, dur, section) {
+    const padAmount = clamp(0.18 + 0.32*Number(energyEl.value), 0.16, 0.58);
+    const tones = chordTones(chordRoot, quality);
+    const baseMidi = 48;
+    const g = ctx.createGain();
+    const peak = 0.25 * padAmount;
+    adsr(g, t, 0.06, 0.18, 0.62, Math.min(0.30, dur*0.7), peak);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 120;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1100 + 1900*Number(energyEl.value);
+    lp.Q.value = 0.6;
+    hp.connect(lp); lp.connect(g); g.connect(chordBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.50 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    const invChance = (section === "B") ? (0.35 + 0.45*Number(varEl.value)) : (0.18 + 0.25*Number(varEl.value));
+    tones.slice(0,3).forEach((semi, i) => {
+      const o = ctx.createOscillator();
+      o.type = (i === 0) ? "triangle" : "sine";
+      o.detune.value = (i === 1 ? 6 : (i === 2 ? -6 : 0));
+      let m = baseMidi + chordRoot + semi;
+      if (Math.random() < invChance && i > 0) m += choice([12, 12, 24]);
+      o.frequency.setValueAtTime(midiToHz(m), t);
+      o.connect(hp);
+      o.start(t);
+      o.stop(t + dur);
+    });
+  }
+
+  // ---------- Lead instruments ----------
+  function playLead(t, midi, dur, vel=1) {
+    const amount = Number(leadEl.value);
+    if (amount <= 0.001 || midi == null) return;
+    const inst = Number(instEl.value);
+    if (inst === 0) return leadPiano(t, midi, dur, vel, amount);
+    if (inst === 1) return leadNylon(t, midi, dur, vel, amount);
+    if (inst === 2) return leadElectric(t, midi, dur, vel, amount);
+    if (inst === 3) return leadSax(t, midi, dur, vel, amount);
+    return leadKeyboard(t, midi, dur, vel, amount);
+  }
+
+  function leadPiano(t, midi, dur, vel, amount) {
+    const freq = midiToHz(midi);
+    const g = ctx.createGain();
+    const peak = 0.35 * amount * vel;
+    adsr(g, t, 0.004, 0.10, 0.18, Math.min(0.20, dur*0.6), peak);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1200 + 2400*vel;
+    lp.Q.value = 0.7;
+    lp.connect(g); g.connect(leadBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.22 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    const det = 6 + 8*Number(varEl.value);
+    const partials = [
+      { mul: 1.0, type: "sine",  gain: 1.0 },
+      { mul: 2.0, type: "sine",  gain: 0.35 },
+      { mul: 3.0, type: "triangle", gain: 0.20 },
+    ];
+    partials.forEach((p, i) => {
+      const o = ctx.createOscillator();
+      const og = ctx.createGain();
+      o.type = p.type;
+      o.frequency.setValueAtTime(freq * p.mul, t);
+      o.detune.value = (i === 0 ? 0 : (i === 1 ? det : -det));
+      og.gain.value = p.gain;
+      o.connect(og); og.connect(lp);
+      o.start(t); o.stop(t + dur);
+    });
+  }
+
+  function leadNylon(t, midi, dur, vel, amount) {
+    const freq = midiToHz(midi);
+    const delayTime = 1 / freq;
+    const noise = ctx.createBufferSource();
+    const len = Math.floor(ctx.sampleRate * 0.03);
+    const b = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = b.getChannelData(0);
+    for (let i=0;i<len;i++) data[i] = (Math.random()*2 - 1) * (1 - i/len);
+    noise.buffer = b;
+    const delay = ctx.createDelay(1.0);
+    delay.delayTime.setValueAtTime(delayTime, t);
+    const fb = ctx.createGain();
+    fb.gain.value = 0.92 - 0.12*(1-vel);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2200 + 1800*vel;
+    lp.Q.value = 0.6;
+    const g = ctx.createGain();
+    const peak = 0.40 * amount * vel;
+    adsr(g, t, 0.002, 0.08, 0.10, Math.min(0.25, dur*0.7), peak);
+    noise.connect(lp);
+    lp.connect(delay);
+    delay.connect(fb);
+    fb.connect(delay);
+    delay.connect(g);
+    g.connect(leadBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.18 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    noise.start(t); noise.stop(t + 0.03);
+  }
+
+  function leadElectric(t, midi, dur, vel, amount) {
+    const freq = midiToHz(midi);
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(freq, t);
+    const g = ctx.createGain();
+    const peak = 0.28 * amount * vel;
+    adsr(g, t, 0.004, 0.10, 0.22, Math.min(0.30, dur*0.8), peak);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 950 + 1200*vel;
+    bp.Q.value = 0.9;
+    const sh = makeWaveshaper(2.8 + 1.2*Number(energyEl.value));
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2200 + 1800*vel;
+    lp.Q.value = 0.7;
+    o.connect(bp); bp.connect(sh); sh.connect(lp); lp.connect(g); g.connect(leadBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.16 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    const lfo = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.value = 5.0 + 0.9*Number(varEl.value);
+    lfoG.gain.value = 8 + 10*Number(varEl.value);
+    lfo.connect(lfoG); lfoG.connect(o.detune);
+    lfo.start(t); o.start(t);
+    o.stop(t + dur); lfo.stop(t + dur);
+  }
+
+  function leadSax(t, midi, dur, vel, amount) {
+    const freq = midiToHz(midi);
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(freq * (0.985 - 0.01*(1-vel)), t);
+    o.frequency.exponentialRampToValueAtTime(freq, t + 0.06);
+    const g = ctx.createGain();
+    const peak = 0.22 * amount * vel;
+    adsr(g, t, 0.03, 0.10, 0.45, Math.min(0.22, dur*0.6), peak);
+    const f1 = ctx.createBiquadFilter();
+    f1.type = "bandpass";
+    f1.frequency.value = 700 + 500*vel;
+    f1.Q.value = 0.8;
+    const f2 = ctx.createBiquadFilter();
+    f2.type = "bandpass";
+    f2.frequency.value = 1400 + 700*vel;
+    f2.Q.value = 0.7;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2600 + 1400*vel;
+    lp.Q.value = 0.6;
+    o.connect(f1); f1.connect(f2); f2.connect(lp); lp.connect(g); g.connect(leadBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.28 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    const lfo = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.value = 5.4;
+    lfoG.gain.value = 12 + 10*Number(varEl.value);
+    lfo.connect(lfoG); lfoG.connect(o.detune);
+    lfo.start(t); o.start(t);
+    o.stop(t + dur); lfo.stop(t + dur);
+  }
+
+  function leadKeyboard(t, midi, dur, vel, amount) {
+    const freq = midiToHz(midi);
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "square";
+    o2.detune.value = -12;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(800 + 600*vel, t);
+    lp.frequency.linearRampToValueAtTime(2400 + 2400*vel, t + 0.06);
+    lp.frequency.linearRampToValueAtTime(1400 + 1200*vel, t + 0.22);
+    lp.Q.value = 0.85;
+    const g = ctx.createGain();
+    const peak = 0.24 * amount * vel;
+    adsr(g, t, 0.01, 0.08, 0.30, Math.min(0.20, dur*0.6), peak);
+    o1.frequency.setValueAtTime(freq, t);
+    o2.frequency.setValueAtTime(freq, t);
+    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(leadBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.20 * Number(revEl.value);
+    g.connect(send); send.connect(revSend);
+    const lfo = ctx.createOscillator();
+    const lfoG = ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.value = 5.0;
+    lfoG.gain.value = 7 + 9*Number(varEl.value);
+    lfo.connect(lfoG); lfoG.connect(o1.detune); lfoG.connect(o2.detune);
+    lfo.start(t); o1.start(t); o2.start(t);
+    o1.stop(t + dur); o2.stop(t + dur); lfo.stop(t + dur);
+  }
+
+  // ---------- Transport ----------
+  function stepDurationSec() {
+    const tempo = Number(tempoEl.value);
+    return (60 / tempo) / 4;
+  }
+
+  function microTimingJitterSec() {
+    const h = Number(humEl.value);
+    return (Math.random()*2 - 1) * (0.002 + 0.016*h); // 2ms..18ms
+  }
+
+  function scheduleStep(stepIndex, baseTime) {
+    const st = pattern.seq[stepIndex];
+    const dur = stepDurationSec() * 0.98;
+    const swing = pattern.swing;
+    const isOff = (stepIndex % 2) === 1;
+    const jitter = microTimingJitterSec();
+    const t = baseTime + (isOff ? swing * dur : 0) + jitter;
+
+    if ((stepIndex % pattern.stepsPerBar) === 0) playChordPad(t, st.chordRoot, st.quality, stepDurationSec() * pattern.stepsPerBar, st.section);
+
+    if (st.kick)  playKick(t, 0.95);
+    if (st.snare) playSnare(t, 0.92);
+    if (st.hat)   playHat(t, st.velHat);
+
+    if (st.bass != null) playBass(t, st.bass, stepDurationSec()*2.2, st.velBass);
+    if (st.lead != null) playLead(t, st.lead, stepDurationSec()*1.6, st.velLead);
+
+    const v = Number(varEl.value);
+    if (st.lead != null && Math.random() < (0.02 + 0.08*v) && st.stepInBar !== 0) {
+      const gt = t - (0.03 + 0.02*Math.random());
+      playLead(gt, st.lead + choice([-2,-1,1,2]), stepDurationSec()*0.45, clamp(st.velLead*0.55, 0.2, 1));
+    }
+  }
+
+  function start() {
+    if (!ctx) { log("Engine not unlocked yet."); return; }
+    if (!pattern) generatePattern(true);
+    if (playing) return;
+    playing = true;
+    currentStep = 0;
+    let nextTime = ctx.currentTime + 0.06;
+    const lookahead = 0.13;
+    const intervalMs = 25;
+
+    function tick() {
+      if (!playing) return;
+      const now = ctx.currentTime;
+      while (nextTime < now + lookahead) {
+        scheduleStep(currentStep, nextTime);
+        nextTime += stepDurationSec();
+        currentStep += 1;
+        if (currentStep >= pattern.totalSteps) { currentStep = 0; evolvePattern(); }
+      }
+      stepTimer = setTimeout(tick, intervalMs);
+    }
+    tick();
+    stopBtn.disabled = false;
+    playBtn.disabled = true;
+    regenBtn.disabled = true;
+    log("Playback started.");
+  }
+
+  function stop() {
+    playing = false;
+    if (stepTimer) { clearTimeout(stepTimer); stepTimer = null; }
+    playBtn.disabled = false;
+    regenBtn.disabled = false;
+    stopBtn.disabled = false;
+    log("Playback stopped.");
+  }
+
+  function regenerate() {
+    stop();
+    generatePattern(true);
+    updateMix();
+    log("Regenerated.");
+  }
+
+  function updateMix() {
+    if (!ctx) return;
+    const drums = Number(drumsEl.value);
+    const bass  = Number(bassEl.value);
+    const lead  = Number(leadEl.value);
+    const rev   = Number(revEl.value);
+    const energy = Number(energyEl.value);
+
+    drumBus.gain.value = 0.92 * drums;
+    bassBus.gain.value = 0.82 * bass;
+    leadBus.gain.value = 0.88 * lead;
+    chordBus.gain.value = 0.55;
+    revReturn.gain.value = 0.20 + 0.70 * rev;
+    master.gain.value = 0.70 + 0.30*energy;
+
+    if (pattern) {
+      pattern.swing = clamp(0.02 + 0.18*energy, 0, 0.22);
+      nowPlaying.textContent = `${pattern.keyName} · ${pattern.progName} · ${Number(tempoEl.value)} BPM · Var ${Number(varEl.value).toFixed(2)} · Oct ${Number(octEl.value).toFixed(1)} · ${instNames[Number(instEl.value)]}`;
+    }
+  }
+
+  ["input","change"].forEach(ev => {
+    [drumsEl,bassEl,leadEl,revEl,energyEl,varEl,humEl,instEl].forEach(el => el.addEventListener(ev, updateMix, { passive: true }));
+    keyEl.addEventListener(ev, () => generatePattern(true), { passive: true });
+    progEl.addEventListener(ev, () => generatePattern(true), { passive: true });
+    octEl.addEventListener(ev, () => generatePattern(true), { passive: true });
+  });
+
+  // ---------- Scope ----------
+  function drawScope() {
+    requestAnimationFrame(drawScope);
+    if (!analyser) { sctx.clearRect(0,0,scope.width,scope.height); return; }
+    const w = scope.width, h = scope.height;
+    const buf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(buf);
+    sctx.clearRect(0,0,w,h);
+    sctx.beginPath();
+    const step = w / buf.length;
+    for (let i=0;i<buf.length;i++) {
+      const v = buf[i] / 255;
+      const y = v * h;
+      const x = i * step;
+      if (i === 0) sctx.moveTo(x,y); else sctx.lineTo(x,y);
+    }
+    sctx.strokeStyle = "rgba(255,255,255,.75)";
+    sctx.lineWidth = 1.5;
+    sctx.stroke();
+  }
+  drawScope();
+
+  // ---------- Buttons ----------
+  $("unlockBtn").addEventListener("click", async () => {
+    try {
+      await unlockAudio();
+      playBtn.disabled = false;
+      regenBtn.disabled = false;
+      stopBtn.disabled = false;
+    } catch (e) {
+      log(`Unlock error: ${e.message || e}`);
+    }
+  });
+
+  playBtn.addEventListener("click", async () => {
+    try {
+      if (!ctx) { log("Tap Start first."); return; }
+      if (ctx.state !== "running") await ctx.resume();
+      updateMix();
+      start();
+    } catch (e) { log(`Play failed: ${e.message || e}`); }
+  });
+
+  stopBtn.addEventListener("click", () => stop());
+  regenBtn.addEventListener("click", () => regenerate());
+
+  log("Loaded. Tap Start to unlock audio.");
+  setEngineOn(false);
+})();
+</script>
+</body>
+</html>
